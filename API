@@ -1,0 +1,61 @@
+const express = require('express');
+const router = express.Router();
+const mongoose = require('mongoose');
+
+const WalletTransaction = mongoose.model('WalletTransaction');
+const GoldTransaction = mongoose.model('GoldTransaction');
+const User = mongoose.model('User');
+
+router.get('/portfolio', async (req, res) => {
+  // Authenticate the user and ensure that they are authorized to access their portfolio details.
+  const userId = req.user.id; // Assuming user ID is stored in req.user
+
+  try {
+    const walletTransactions = await WalletTransaction.find({ userId });
+    const netFundAdded = walletTransactions.reduce((total, wt) => {
+      if (wt.type === 'CREDIT') {
+        return total + wt.amount;
+      } else {
+        return total - wt.amount;
+      }
+    }, 0);
+
+
+    const user = await User.findById(userId);
+    const currentFund = user.runningBalance.wallet;
+
+
+    const goldTransactions = await GoldTransaction.find({ userId });
+    const netGold = goldTransactions.reduce((total, gt) => {
+      if (gt.type === 'CREDIT') {
+        return total + gt.quantity;
+      } else {
+        return total - gt.quantity;
+      }
+    }, 0);
+
+
+    const currentGoldPrice = user.runningBalance.goldPrice;
+    const currentGoldQuantity = user.runningBalance.gold + netGold;
+    const currentGoldValue = currentGoldPrice * currentGoldQuantity;
+
+
+    const netGrowthOrLoss = currentFund + netFundAdded + currentGoldValue;
+
+
+    const gainOrLossPercentage = ((netGrowthOrLoss / (currentFund + netFundAdded)) - 1) * 100;
+
+   
+    res.json({
+      netFundAdded,
+      currentFund,
+      netGrowthOrLoss,
+      gainOrLossPercentage,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+module.exports = router;
